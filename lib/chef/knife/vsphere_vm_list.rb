@@ -4,6 +4,7 @@
 #
 require 'chef/knife'
 require 'chef/knife/BaseVsphereCommand'
+require 'terminal-table/import'
 
 # Lists all known virtual machines in the configured datacenter
 class Chef::Knife::VsphereVmList < Chef::Knife::BaseVsphereCommand
@@ -32,24 +33,20 @@ class Chef::Knife::VsphereVmList < Chef::Knife::BaseVsphereCommand
 
 	def print_vms_in_folder(folder)
 		vms = find_all_in_folder(folder, RbVmomi::VIM::VirtualMachine)
-		vms.each do |vm|
-                        state = case vm.runtime.powerState
-                                when PsOn
-                                        ui.color("on", :green)
-                                when PsOff
-                                        ui.color("off", :red)
-                                when PsSuspended
-                                        ui.color("suspended", :yellow)
-                                end
-			puts "#{ui.color("VM Name:", :cyan)} #{vm.name}\t#{ui.color("IP:", :magenta)} #{vm.guest.ipAddress}\t#{ui.color("RAM:", :magenta)} #{vm.summary.config.memorySizeMB}\t#{ui.color("State:", :cyan)} #{state}"
+		table_out = table do | t |
+			t.headings = %w{NAME IP RAM CPU DISKS NICS STATE VM_TOOLS}
+			vms.each do | vm |
+				t << [vm.name, vm.guest.ipAddress, vm.summary.config.memorySizeMB, vm.summary.config.numCpu, vm.summary.config.numVirtualDisks, vm.summary.config.numEthernetCards, vm.summary.runtime.powerState]
+			end
 		end
+		puts table_out
 	end
 
 	def print_subfolders(folder)
 		folders = find_all_in_folder(folder, RbVmomi::VIM::Folder)
-    folders.each do |subfolder|
-      puts "#{ui.color("Folder Name", :cyan)}: #{subfolder.name}"
-    end
+		folders.each do |subfolder|
+			puts "#{ui.color("Folder Name", :cyan)}: #{subfolder.name}"
+		end
 	end
 
 	def run
