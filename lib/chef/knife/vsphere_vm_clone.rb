@@ -18,6 +18,25 @@ require 'netaddr'
 #     --chostname NODENAME --cdomain NODEDOMAIN
 class Chef::Knife::VsphereVmClone < Chef::Knife::BaseVsphereCommand
 
+      include Chef::Knife::WinrmBase
+      deps do
+        require 'chef/knife/winrm_base'
+        require 'winrm'
+        require 'em-winrm'
+        require 'chef/json_compat'
+        require 'chef/knife/bootstrap'
+        require 'chef/knife/bootstrap_windows_winrm'
+        require 'chef/knife/core/windows_bootstrap_context'
+        require 'chef/knife/winrm'
+        Chef::Knife::Bootstrap.load_deps
+      end
+    # Seconds to delay between detecting ssh and initiating the bootstrap
+    BOOTSTRAP_DELAY = 20
+    #The machine will reboot once so we need to handle that
+    WINRM_BOOTSTRAP_DELAY = 200
+
+    # Seconds to wait between ssh pings
+    SSH_POLL_INTERVAL = 10
 	banner "knife vsphere vm clone VMNAME (options)"
 
 	get_common_options
@@ -54,6 +73,9 @@ class Chef::Knife::VsphereVmClone < Chef::Knife::BaseVsphereCommand
 	option :customization_plugin_data,
 		:long => "--cplugin-data CUST_PLUGIN_DATA",
 		:description => "String of data to pass to the plugin.  Use any format you wish."
+	option :customization_def_gw,
+                :long => "--def_gw_data CUST_DEF_GW_DATA",
+                :description => "Default gateway (front, back)"
 
 	option :customization_vlan,
 		:long => "--cvlan CUST_VLAN",
@@ -108,6 +130,26 @@ class Chef::Knife::VsphereVmClone < Chef::Knife::BaseVsphereCommand
 	option :fqdn,
 		:long => "--fqdn SERVER_FQDN",
 		:description => "Fully qualified hostname for bootstrapping"
+	option :bootstrap_protocol,
+       		:long => "--bootstrap-protocol protocol",
+           	:description => "Protocol to bootstrap windows servers. options: winrm/ssh",
+           	:default => "ssh"
+
+	option :winrm_user,
+		:short => "-x USERNAME",
+                :long => "--winrm-user USERNAME",
+                :description => "The winrm username"
+
+	option :winrm_password,
+                :short => "-P PASSWORD",
+                :long => "--winrm-password PASSWORD",
+                :description => "The winrm password"
+
+        option :winrm_port,
+                :short => "-p PORT",
+                :long => "--winrm-port PORT",
+                :description => "The winrm port"
+        $default[:winrm_port] = 5985
 
 	option :ssh_user,
 		:short => "-x USERNAME",
@@ -240,13 +282,25 @@ class Chef::Knife::VsphereVmClone < Chef::Knife::BaseVsphereCommand
 		end
 
 		if get_config(:bootstrap)
+			@bootstrap_protocol = get_config(:bootstrap_protocol)
+			if @bootstrap_protocol == 'ssh'
 			sleep 2 until vm.guest.ipAddress
 			config[:fqdn] = vm.guest.ipAddress unless config[:fqdn]
-			print "Waiting for sshd..."
-			print "." until tcp_test_ssh(config[:fqdn])
-			puts "done"
-
-			bootstrap_for_node.run
+				print "\n#{ui.color("Waiting for sshd", :magenta)}"
+				print(".") until tcp_test_ssh(config[:fqdn]) {
+					sleep BOOTSTRAP_DELAY
+					puts "\n"
+    	   			}
+				bootstrap_for_node.run
+     			else
+				sleep 2 until vm.guest.ipAddress
+		 		print "\n#{ui.color("Waiting for winrm to be active", :magenta)}"
+				print(".") until tcp_test_winrm(config[:fqdn]) {
+					sleep WINRM_BOOTSTRAP_DELAY
+					puts("\n")
+        			}
+				bootstrap_for_windows_node.run
+      			end
 		end
 	end
 
@@ -305,9 +359,6 @@ class Chef::Knife::VsphereVmClone < Chef::Knife::BaseVsphereCommand
 			csi = find_customization(get_config(:customization_spec)) or
 			fatal_exit("failed to find customization specification named #{get_config(:customization_spec)}")
 
-			if csi.info.type != "Linux"
-				fatal_exit("Only Linux customization specifications are currently supported")
-			end
 			cust_spec = csi.spec
 		else
 			global_ipset = RbVmomi::VIM.CustomizationGlobalIPSettings
@@ -332,9 +383,47 @@ class Chef::Knife::VsphereVmClone < Chef::Knife::BaseVsphereCommand
 
     unless get_config(:disable_customization)
       use_ident = !config[:customization_hostname].nil? || !get_config(:customization_domain).nil? || cust_spec.identity.nil?
+    end
 
 
 		if use_ident
+	                if get_config(:distro) == "windows"
+				#print "Windows"
+				identification = RbVmomi::VIM.CustomizationIdentification(
+                                  :joinWorkgroup => 'WORKGROUP'
+                                )
+                                licenseFilePrintData = RbVmomi::VIM.CustomizationLicenseFilePrintData(
+                                  :autoMode => RbVmomi::VIM.CustomizationLicenseDataMode('perSeat')
+                                )
+
+                                userData = RbVmomi::VIM.CustomizationUserData(
+                                  :fullName => 'Schuberg Philis',
+                                  :orgName => 'Schubergphilis',
+                                  :productId => '',
+				  :computerName => RbVmomi::VIM.CustomizationFixedName(:name => config[:customization_hostname])
+                                )
+
+                                guiUnattended = RbVmomi::VIM.CustomizationGuiUnattended(
+                                  :autoLogon => true,
+                                  :autoLogonCount => 2,
+                                  :password => RbVmomi::VIM.CustomizationPassword(
+                                    :plainText => true,
+                                    :value => "password"
+                                  ),
+                                  :timeZone => 105
+                                )
+                                runonce = RbVmomi::VIM.CustomizationGuiRunOnce(
+                                  :commandList => ["cmd /C winrm quickconfig -q"]
+                                )
+                                ident = RbVmomi::VIM.CustomizationSysprep
+                                ident.guiRunOnce = runonce
+                                ident.guiUnattended = guiUnattended
+                                ident.identification = identification
+                                ident.licenseFilePrintData = licenseFilePrintData
+                                ident.userData = userData
+
+                                cust_spec.identity = ident
+        	        else
 			# TODO - verify that we're deploying a linux spec, at least warn
 			ident = RbVmomi::VIM.CustomizationLinuxPrep
 
@@ -354,12 +443,14 @@ class Chef::Knife::VsphereVmClone < Chef::Knife::BaseVsphereCommand
 			cust_spec.identity = ident
 		end
 
+                end
+
 		if customization_plugin && customization_plugin.respond_to?(:customize_clone_spec)
 			clone_spec = customization_plugin.customize_clone_spec(src_config, clone_spec)
 		end
 
 		clone_spec.customization = cust_spec
-	end
+
 		clone_spec
 	end
 
@@ -376,9 +467,14 @@ class Chef::Knife::VsphereVmClone < Chef::Knife::BaseVsphereCommand
 
 				if Object.const_defined? 'KnifeVspherePlugin'
 					@customization_plugin = Object.const_get('KnifeVspherePlugin').new
+					if def_gw_data = get_config(:customization_def_gw)
+                                                if @customization_plugin.respond_to?(:data=)
+                                                        @customization_def_gw = def_gw_data
+                                                end
+                                        end
 					if cplugin_data = get_config(:customization_plugin_data)
 						if @customization_plugin.respond_to?(:data=)
-							@customization_plugin.data = cplugin_data
+							@customization_plugin.data = cplugin_data + ", GW=" + def_gw_data
 						else
 							abort "Customization plugin has no :data= accessor to receive the --cplugin-data argument.  Define both or neither."
 						end
@@ -433,6 +529,23 @@ class Chef::Knife::VsphereVmClone < Chef::Knife::BaseVsphereCommand
 		adapter_map
 	end
 
+	def bootstrap_for_windows_node()
+		Chef::Knife::Bootstrap.load_deps
+        	bootstrap = Chef::Knife::BootstrapWindowsWinrm.new
+        	bootstrap.name_args = [config[:fqdn]]
+        	bootstrap.config[:winrm_user] = get_config(:winrm_user) || 'Administrator'
+        	bootstrap.config[:winrm_password] = get_config(:winrm_password)
+        	bootstrap.config[:winrm_transport] = get_config(:winrm_transport)
+        	bootstrap.config[:winrm_port] = get_config(:winrm_port)
+        	bootstrap.config[:chef_node_name] = get_config(:chef_node_name) 
+                bootstrap.config[:run_list] = get_config(:run_list).split(/[\s,]+/)
+                bootstrap.config[:prerelease] = get_config(:prerelease)
+                bootstrap.config[:bootstrap_version] = get_config(:bootstrap_version)
+                bootstrap.config[:distro] = get_config(:distro)
+                bootstrap.config[:template_file] = get_config(:template_file)
+                bootstrap.config[:environment] = get_config(:environment)
+		bootstrap
+      	end
 	def bootstrap_for_node()
 		Chef::Knife::Bootstrap.load_deps
 		bootstrap = Chef::Knife::Bootstrap.new
@@ -478,4 +591,20 @@ class Chef::Knife::VsphereVmClone < Chef::Knife::BaseVsphereCommand
 	ensure
 		tcp_socket && tcp_socket.close
 	end
+	def tcp_test_winrm(hostname)
+                tcp_socket = TCPSocket.new(hostname, get_config(:winrm_port))
+		return true
+        rescue Errno::ETIMEDOUT
+                false
+        rescue Errno::EPERM
+                false
+        rescue Errno::ECONNREFUSED
+                sleep 2
+                false
+        rescue Errno::EHOSTUNREACH, Errno::ENETUNREACH
+                sleep 2
+                false
+        ensure
+                tcp_socket && tcp_socket.close
+        end
 end
