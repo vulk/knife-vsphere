@@ -32,21 +32,18 @@ def number_to_human_size(number)
     unit = storage_units_fmt[exponent]
   end
 
-  return sprintf("%0.2f %s", number, unit)
+  sprintf("%0.2f %s", number, unit)
 end
 
 
 # Lists all known data stores in datacenter with sizes
 class Chef::Knife::VsphereDatastoreList < Chef::Knife::BaseVsphereCommand
-
   banner "knife vsphere datastore list"
 
   get_common_options
 
   def run
-    $stdout.sync = true
-
-    vim = get_vim_connection
+    get_vim_connection
     dcname = get_config(:vsphere_dc)
     dc = config[:vim].serviceInstance.find_datacenter(dcname) or abort "datacenter not found"
     dc.datastore.each do |store|
@@ -56,4 +53,3 @@ class Chef::Knife::VsphereDatastoreList < Chef::Knife::BaseVsphereCommand
     end
   end
 end
-

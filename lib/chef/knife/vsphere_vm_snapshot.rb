@@ -52,7 +52,7 @@ class Chef::Knife::VsphereVmSnapshot < Chef::Knife::BaseVsphereCommand
       exit 1
     end
 
-    vim = get_vim_connection
+    get_vim_connection
 
     baseFolder = find_folder(get_config(:folder));
 
@@ -110,7 +110,7 @@ class Chef::Knife::VsphereVmSnapshot < Chef::Knife::BaseVsphereCommand
         snapshot = find_node(node.childSnapshotList, name)
       end
     end
-    return snapshot
+    snapshot
   end
 
   def display_node(node, current, shift=1)

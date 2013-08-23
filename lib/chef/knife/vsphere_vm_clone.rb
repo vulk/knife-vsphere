@@ -196,7 +196,6 @@ class Chef::Knife::VsphereVmClone < Chef::Knife::BaseVsphereCommand
          :proc => lambda { |l| l.to_sym }
 
   def run
-    $stdout.sync = true
 
     vmname = @name_args[0]
     if vmname.nil?
@@ -257,7 +256,6 @@ class Chef::Knife::VsphereVmClone < Chef::Knife::BaseVsphereCommand
   # Builds a CloneSpec
   def generate_clone_spec (src_config)
 
-    rspec = nil
     if get_config(:resource_pool)
       rspec = RbVmomi::VIM.VirtualMachineRelocateSpec(:pool => find_pool(get_config(:resource_pool)))
     else
