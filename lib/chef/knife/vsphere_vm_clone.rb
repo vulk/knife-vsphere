@@ -274,7 +274,7 @@ class Chef::Knife::VsphereVmClone < Chef::Knife::BaseVsphereCommand
                                                       :powerOn => false,
                                                       :template => false)
 
-    clone_spec.config = RbVmomi::VIM.VirtualMachineConfigSpec(:deviceChange => Array.new)
+    clone_spec.config = RbVmomi::VIM.VirtualMachineConfigSpec(:deviceChange => [])
 
     if get_config(:annotation)
       clone_spec.config.annotation = get_config(:annotation)

@@ -112,28 +112,28 @@ class Chef::Knife::VsphereVmVmdkAdd < Chef::Knife::BaseVsphereCommand
     ui.info "Attaching VMDK to #{vmname}"
 
     # now we run through the SCSI controllers to see if there's an available one
-    available_controllers = Array.new()
+    available_controllers = []
     use_controller = nil
-    scsi_tree = Hash.new()
+    scsi_tree = {}
     vm.config.hardware.device.each do |device|
       if device.class == RbVmomi::VIM::VirtualLsiLogicController
-        if scsi_tree[device.controllerKey].nil?
-          scsi_tree[device.key]=Hash.new()
-          scsi_tree[device.key]['children'] = Array.new();
-          scsi_tree[device.key]['device'] = device;
+        unless  scsi_tree.has_key?(device.controllerKey)
+          scsi_tree[device.key] = {}
+          scsi_tree[device.key]['children'] = []
+          scsi_tree[device.key]['device'] = device
         end
       end
       if device.class == RbVmomi::VIM::VirtualDisk
-        if scsi_tree[device.controllerKey].nil?
-          scsi_tree[device.controllerKey]=Hash.new()
-          scsi_tree[device.controllerKey]['children'] = Array.new();
+        unless scsi_tree.has_key?(device.controllerKey)
+          scsi_tree[device.controllerKey]= {}
+          scsi_tree[device.controllerKey]['children'] = []
         end
-        scsi_tree[device.controllerKey]['children'].push(device)
+        scsi_tree[device.controllerKey]['children'] << device
       end
     end
     scsi_tree.keys.sort.each do |controller|
       if scsi_tree[controller]['children'].length < 15
-        available_controllers.push(scsi_tree[controller]['device'].deviceInfo.label)
+        available_controllers << scsi_tree[controller]['device'].deviceInfo.label
       end
     end
 
@@ -143,7 +143,6 @@ class Chef::Knife::VsphereVmVmdkAdd < Chef::Knife::BaseVsphereCommand
     else
 
       if scsi_tree.keys.length < 4
-
         # Add a controller if none are available
         puts "no controllers available. Will attempt to create"
         new_scsi_key = scsi_tree.keys.sort[scsi_tree.length - 1] + 1
@@ -187,21 +186,19 @@ class Chef::Knife::VsphereVmVmdkAdd < Chef::Knife::BaseVsphereCommand
     # add the disk
     controller = find_device(vm, use_controller)
 
-    used_unitNumbers = Array.new()
+    used_unitNumbers = []
     scsi_tree.keys.sort.each do |c|
       if controller.key == scsi_tree[c]['device'].key
-        used_unitNumbers.push(scsi_tree[c]['device'].scsiCtlrUnitNumber)
-        scsi_tree[c]['children'].each do |disk|
-          used_unitNumbers.push(disk.unitNumber)
-        end
+        used_unitNumbers << scsi_tree[c]['device'].scsiCtlrUnitNumber
+        used_unitNumbers << scsi_tree[c]['children'].map {|disk| disk.unitNumber }
       end
     end
 
-    available_unitNumbers = Array.new
+    available_unitNumbers = []
     (0 .. 15).each do |scsi_id|
       if used_unitNumbers.grep(scsi_id).length > 0
       else
-        available_unitNumbers.push(scsi_id)
+        available_unitNumbers << scsi_id
       end
     end
 
