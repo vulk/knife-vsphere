@@ -117,7 +117,7 @@ class Chef::Knife::VsphereVmVmdkAdd < Chef::Knife::BaseVsphereCommand
     use_controller = nil
     scsi_tree = Hash.new()
     vm.config.hardware.device.each do |device|
-      if device.class == RbVmomi::VIM::VirtualLsiLogicController
+      if device.class == RbVmomi::VIM::VirtualLsiLogicSASController
         if scsi_tree[device.controllerKey].nil?
             scsi_tree[device.key]=Hash.new()
             scsi_tree[device.key]['children'] = Array.new();
