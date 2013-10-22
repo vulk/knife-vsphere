@@ -10,6 +10,7 @@ require 'chef/knife'
 require 'chef/knife/BaseVsphereCommand'
 require 'rbvmomi'
 require 'netaddr'
+require 'chef/knife/winrm_base'
 
 # Clone an existing template into a new VM, optionally applying a customization specification.
 # usage:
@@ -20,7 +21,6 @@ class Chef::Knife::VsphereVmClone < Chef::Knife::BaseVsphereCommand
 
       include Chef::Knife::WinrmBase
       deps do
-        require 'chef/knife/winrm_base'
         require 'winrm'
         require 'em-winrm'
         require 'chef/json_compat'
@@ -37,6 +37,7 @@ class Chef::Knife::VsphereVmClone < Chef::Knife::BaseVsphereCommand
 
     # Seconds to wait between ssh pings
     SSH_POLL_INTERVAL = 10
+
 	banner "knife vsphere vm clone VMNAME (options)"
 
 	get_common_options
@@ -61,7 +62,6 @@ class Chef::Knife::VsphereVmClone < Chef::Knife::BaseVsphereCommand
 	option :annotation,
 		:long => "--annotation TEXT",
 		:description => "Add TEXT in Notes field from annotation"
-
 	option :customization_spec,
 		:long => "--cspec CUST_SPEC",
 		:description => "The name of any customization specification to apply"
@@ -73,6 +73,7 @@ class Chef::Knife::VsphereVmClone < Chef::Knife::BaseVsphereCommand
 	option :customization_plugin_data,
 		:long => "--cplugin-data CUST_PLUGIN_DATA",
 		:description => "String of data to pass to the plugin.  Use any format you wish."
+	
 	option :customization_def_gw,
                 :long => "--def_gw_data CUST_DEF_GW_DATA",
                 :description => "Default gateway (front, back)"
@@ -130,6 +131,7 @@ class Chef::Knife::VsphereVmClone < Chef::Knife::BaseVsphereCommand
 	option :fqdn,
 		:long => "--fqdn SERVER_FQDN",
 		:description => "Fully qualified hostname for bootstrapping"
+
 	option :bootstrap_protocol,
        		:long => "--bootstrap-protocol protocol",
            	:description => "Protocol to bootstrap windows servers. options: winrm/ssh",
@@ -232,7 +234,6 @@ class Chef::Knife::VsphereVmClone < Chef::Knife::BaseVsphereCommand
     :long =>  "--log_level",
     :description => "Set the log level (debug, info, warn, error, fatal) for chef-client",
     :proc => lambda { |l| l.to_sym }
-    
 	def run
 		$stdout.sync = true
 
@@ -250,8 +251,8 @@ class Chef::Knife::VsphereVmClone < Chef::Knife::BaseVsphereCommand
 
 		vim = get_vim_connection
 
-    dcname = get_config(:vsphere_dc)
-    dc = vim.serviceInstance.find_datacenter(dcname) or abort "datacenter not found"
+    		dcname = get_config(:vsphere_dc)
+    		dc = vim.serviceInstance.find_datacenter(dcname) or abort "datacenter not found"
 
 		src_folder = find_folder(get_config(:folder)) || dc.vmFolder
 
@@ -260,13 +261,14 @@ class Chef::Knife::VsphereVmClone < Chef::Knife::BaseVsphereCommand
 
 		clone_spec = generate_clone_spec(src_vm.config)
 
-    cust_folder = config[:dest_folder] || get_config(:folder)
+		cust_folder = config[:dest_folder] || get_config(:folder)
 
 		dest_folder = cust_folder.nil? ? src_vm.vmFolder : find_folder(cust_folder)
 
 		task = src_vm.CloneVM_Task(:folder => dest_folder, :name => vmname, :spec => clone_spec)
 		puts "Cloning template #{config[:source_vm]} to new VM #{vmname}"
 		task.wait_for_completion
+
 		puts "Finished creating virtual machine #{vmname}"
 
 		if customization_plugin && customization_plugin.respond_to?(:reconfig_vm)
@@ -280,12 +282,10 @@ class Chef::Knife::VsphereVmClone < Chef::Knife::BaseVsphereCommand
 			vm.PowerOnVM_Task.wait_for_completion
 			puts "Powered on virtual machine #{vmname}"
 		end
-
 		if get_config(:bootstrap)
 			@bootstrap_protocol = get_config(:bootstrap_protocol)
 			if @bootstrap_protocol == 'ssh'
-			sleep 2 until vm.guest.ipAddress
-			config[:fqdn] = vm.guest.ipAddress unless config[:fqdn]
+				sleep 2 until vm.guest.ipAddress
 				print "\n#{ui.color("Waiting for sshd", :magenta)}"
 				print(".") until tcp_test_ssh(config[:fqdn]) {
 					sleep BOOTSTRAP_DELAY
@@ -331,7 +331,6 @@ class Chef::Knife::VsphereVmClone < Chef::Knife::BaseVsphereCommand
 		if get_config(:annotation)
 			clone_spec.config.annotation = get_config(:annotation)
 		end
-
 		if get_config(:customization_cpucount)
 			clone_spec.config.numCPUs = get_config(:customization_cpucount)
 		end
@@ -358,13 +357,11 @@ class Chef::Knife::VsphereVmClone < Chef::Knife::BaseVsphereCommand
 		if get_config(:customization_spec)
 			csi = find_customization(get_config(:customization_spec)) or
 			fatal_exit("failed to find customization specification named #{get_config(:customization_spec)}")
-
 			cust_spec = csi.spec
 		else
 			global_ipset = RbVmomi::VIM.CustomizationGlobalIPSettings
 			cust_spec = RbVmomi::VIM.CustomizationSpec(:globalIPSettings => global_ipset)
 		end
-
 		if get_config(:customization_dns_ips)
 			cust_spec.globalIPSettings.dnsServerList = get_config(:customization_dns_ips).split(',')
 		end
@@ -380,40 +377,38 @@ class Chef::Knife::VsphereVmClone < Chef::Knife::BaseVsphereCommand
 				cust_spec.nicSettingMap = config[:customization_ips].split(',').map { |i| generate_adapter_map(i) }
 			end
 		end
-
-    unless get_config(:disable_customization)
-      use_ident = !config[:customization_hostname].nil? || !get_config(:customization_domain).nil? || cust_spec.identity.nil?
-    end
-
-
-		if use_ident
+		
+		unless get_config(:disable_customization)
+			use_ident = !config[:customization_hostname].nil? || !get_config(:customization_domain).nil? || cust_spec.identity.nil?
+		end
+                if use_ident
 	                if get_config(:distro) == "windows"
 				#print "Windows"
+				#bla
 				identification = RbVmomi::VIM.CustomizationIdentification(
-                                  :joinWorkgroup => 'WORKGROUP'
+                                  :joinWorkgroup => cust_spec.identity.identification.joinWorkgroup
                                 )
                                 licenseFilePrintData = RbVmomi::VIM.CustomizationLicenseFilePrintData(
-                                  :autoMode => RbVmomi::VIM.CustomizationLicenseDataMode('perSeat')
+                                  :autoMode => cust_spec.identity.licenseFilePrintData.autoMode
                                 )
 
                                 userData = RbVmomi::VIM.CustomizationUserData(
-                                  :fullName => 'Schuberg Philis',
-                                  :orgName => 'Schubergphilis',
-                                  :productId => '',
-				  :computerName => RbVmomi::VIM.CustomizationFixedName(:name => config[:customization_hostname])
-                                )
-
+                                  :fullName => cust_spec.identity.userData.fullName,
+                                  :orgName => cust_spec.identity.userData.orgName,
+                                  :productId => cust_spec.identity.userData.productId,
+				  :computerName => cust_spec.identity.userData.computerName
+				)
                                 guiUnattended = RbVmomi::VIM.CustomizationGuiUnattended(
-                                  :autoLogon => true,
-                                  :autoLogonCount => 2,
+                                  :autoLogon => cust_spec.identity.guiUnattended.autoLogon,
+                                  :autoLogonCount => cust_spec.identity.guiUnattended.autoLogonCount,
                                   :password => RbVmomi::VIM.CustomizationPassword(
-                                    :plainText => true,
-                                    :value => "password"
+                                    :plainText => cust_spec.identity.guiUnattended.password.plainText,
+                                    :value => cust_spec.identity.guiUnattended.password.value
                                   ),
-                                  :timeZone => 105
+				  :timeZone => cust_spec.identity.guiUnattended.timeZone
                                 )
                                 runonce = RbVmomi::VIM.CustomizationGuiRunOnce(
-                                  :commandList => ["cmd /C winrm quickconfig -q"]
+                                  :commandList => ['cust_spec.identity.guiUnattended.commandList']
                                 )
                                 ident = RbVmomi::VIM.CustomizationSysprep
                                 ident.guiRunOnce = runonce
@@ -424,33 +419,31 @@ class Chef::Knife::VsphereVmClone < Chef::Knife::BaseVsphereCommand
 
                                 cust_spec.identity = ident
         	        else
-			# TODO - verify that we're deploying a linux spec, at least warn
-			ident = RbVmomi::VIM.CustomizationLinuxPrep
-
-			ident.hostName = RbVmomi::VIM.CustomizationFixedName
-			if config[:customization_hostname]
-				ident.hostName.name = config[:customization_hostname]
-			else
-				ident.hostName.name = config[:vmname]
-			end
-
-			if get_config(:customization_domain)
-				ident.domain = get_config(:customization_domain)
-			else
-				ident.domain = ''
-			end
-
-			cust_spec.identity = ident
-		end
+        	                # TODO - verify that we're deploying a linux spec, at least warn
+        	                ident = RbVmomi::VIM.CustomizationLinuxPrep
+	
+	                        ident.hostName = RbVmomi::VIM.CustomizationFixedName
+	                        if config[:customization_hostname]
+	                                ident.hostName.name = config[:customization_hostname]
+	                        else
+	                                ident.hostName.name = config[:vmname]
+	                        end
+	
+        	                if get_config(:customization_domain)
+        	                        ident.domain = get_config(:customization_domain)
+        	                else
+        	                        ident.domain = ''
+        	                end
+	
+	                        cust_spec.identity = ident
+	                end
 
                 end
 
 		if customization_plugin && customization_plugin.respond_to?(:customize_clone_spec)
 			clone_spec = customization_plugin.customize_clone_spec(src_config, clone_spec)
 		end
-
 		clone_spec.customization = cust_spec
-
 		clone_spec
 	end
 
@@ -546,15 +539,16 @@ class Chef::Knife::VsphereVmClone < Chef::Knife::BaseVsphereCommand
                 bootstrap.config[:environment] = get_config(:environment)
 		bootstrap
       	end
+
 	def bootstrap_for_node()
 		Chef::Knife::Bootstrap.load_deps
 		bootstrap = Chef::Knife::Bootstrap.new
 		bootstrap.name_args = [config[:fqdn]]
-		bootstrap.config[:run_list] = get_config(:run_list).split(/[\s,]+/)
+                bootstrap.config[:run_list] = get_config(:run_list).split(/[\s,]+/)
 		bootstrap.config[:ssh_user] = get_config(:ssh_user)
-		bootstrap.config[:ssh_password] = get_config(:ssh_password)
-		bootstrap.config[:ssh_port] = get_config(:ssh_port)
-		bootstrap.config[:identity_file] = get_config(:identity_file)
+                bootstrap.config[:ssh_password] = get_config(:ssh_password)
+                bootstrap.config[:ssh_port] = get_config(:ssh_port)
+                bootstrap.config[:identity_file] = get_config(:identity_file)
 		bootstrap.config[:chef_node_name] = get_config(:chef_node_name)
 		bootstrap.config[:prerelease] = get_config(:prerelease)
 		bootstrap.config[:bootstrap_version] = get_config(:bootstrap_version)
@@ -591,6 +585,7 @@ class Chef::Knife::VsphereVmClone < Chef::Knife::BaseVsphereCommand
 	ensure
 		tcp_socket && tcp_socket.close
 	end
+
 	def tcp_test_winrm(hostname)
                 tcp_socket = TCPSocket.new(hostname, get_config(:winrm_port))
 		return true
