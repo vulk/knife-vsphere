@@ -5,7 +5,6 @@
 require 'chef/knife'
 require 'chef/knife/base_vsphere_command'
 require 'rbvmomi'
-require 'netaddr'
 
 # Add extra nic to a existing VM
 class Chef::Knife::VsphereVmNicAdd < Chef::Knife::BaseVsphereCommand
@@ -29,22 +28,6 @@ class Chef::Knife::VsphereVmNicAdd < Chef::Knife::BaseVsphereCommand
     :long => "--nic-type ADAPTER TYPE",
     :description => "Choose either 'Vmxnet3' or 'E1000', default is Vmxnet3"
 
-#  option :customization_ips,
-#    :long => "--cips CUST_IPS",
-#    :description => "Comma-delimited list of CIDR IPs for customization"
-
-  def generate_adapter_map (ip, mac)
-    settings = RbVmomi::VIM.CustomizationIPSettings
-
-    cidr_ip = NetAddr::CIDR.create(ip)
-    settings.ip = RbVmomi::VIM::CustomizationFixedIp(:ipAddress => cidr_ip.ip)
-    settings.subnetMask = cidr_ip.netmask_ext
-    adapter_map = RbVmomi::VIM.CustomizationAdapterMapping
-    adapter_map.adapter = settings
-    adapter_map.macAddress = mac
-    adapter_map
-  end
-
   def run
     if get_config(:vmname).nil?
       show_usage
@@ -67,19 +50,21 @@ class Chef::Knife::VsphereVmNicAdd < Chef::Knife::BaseVsphereCommand
       return
     end
 
-    vm_host = vm.runtime.host.name.split('.').first
     vSwitches.each do | vswitch |
       svcheck = find_network(vswitch)
-      if svcheck.host.find {|h| h == vm_host }.nil?
+      sv_true = false
+      svcheck.host.each do | h |
+        if h.name == vm.runtime.host.name
+          sv_true = true
+        end 
+      end
+      if sv_true == false
         ui.fatal("#{vswitch} not available on #{vm_host} for #{vm.name}")
         exit 1
       end
     end
 
-#    cust_ips = config[:customization_ips].split(',')
-
     vSwitches.each do | vswitch |
-#      x=0
       portgrp = find_network(vswitch)
       nic = {:addressType => 'generated'}
       k = vm.config.hardware.device.grep(RbVmomi::VIM::VirtualEthernetCard).count+1
@@ -111,21 +96,10 @@ class Chef::Knife::VsphereVmNicAdd < Chef::Knife::BaseVsphereCommand
         exit 1
       end
 
-      #puts vm.runtime.host.name.split('.').first
       spec = RbVmomi::VIM.VirtualMachineConfigSpec({:deviceChange => [{:operation => :add}.merge(adap_cfg)]})
       vm.ReconfigVM_Task(:spec => spec ).wait_for_completion
       puts "Finished adding " + vswitch
 
-#      if config[:customization_ips]
-#        card = vm.config.hardware.device.find { |d| d.deviceInfo.label == "Network adapter 2" }
-#        pp card.macAddress
-#        global_ipset = RbVmomi::VIM.CustomizationGlobalIPSettings
-#        cust = RbVmomi::VIM.CustomizationSpec(:globalIPSettings => global_ipset)
-#        cust.nicSettingMap = generate_adapter_map(cust_ips[x], card.macAddress)
-#        pp cust
-#        vm.CustomizeVM_Task(:spec => cust ).wait_for_completion
-#      end
-#      x+=1
     end
   end
 end
