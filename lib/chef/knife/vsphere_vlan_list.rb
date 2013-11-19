@@ -31,7 +31,12 @@ class Chef::Knife::VsphereVlanList < Chef::Knife::BaseVsphereCommand
     dcname = get_config(:vsphere_dc)
     dc = config[:vim].serviceInstance.find_datacenter(dcname) or abort "datacenter not found"
     dc.network.each do |network|
-      puts "#{ui.color("VLAN", :cyan)}: #{network.name}"
+      if network.kind_of? RbVmomi::VIM::DistributedVirtualPortgroup
+        type = "DvSwitch"
+      else
+        type = "vSwitch"
+      end
+      puts "#{ui.color("VLAN", :cyan)}: #{network.name} \t#{ui.color("TYPE", :magenta)}: #{type}"
     end
   end
 end
