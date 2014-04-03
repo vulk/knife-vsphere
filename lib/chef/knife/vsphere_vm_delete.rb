@@ -74,7 +74,7 @@ class Chef::Knife::VsphereVmDelete < Chef::Knife::BaseVsphereCommand
       puts "\n"
       print "#{ui.color("Waiting for deletion #{vmname}", :magenta)}"
       vm.Destroy_Task
-    
+      puts "Deleted virtual machine #{vmname}"
       if config[:purge] or
         clean_chef = confirm_action("Do you want to delete the chef node and client '#{vmname}")
         destroy_item(Chef::Node, vmname, "node")
