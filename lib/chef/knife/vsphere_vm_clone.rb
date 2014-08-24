@@ -363,8 +363,8 @@ class Chef::Knife::VsphereVmClone < Chef::Knife::BaseVsphereCommand
           ]
       }
       src_vm.ReconfigVM_Task(:spec => spec).wait_for_completion
-      end
-  e
+    end
+  end
 
 	# Builds a CloneSpec
 	def generate_clone_spec (src_config)
@@ -698,4 +698,3 @@ class Chef::Knife::VsphereVmClone < Chef::Knife::BaseVsphereCommand
     tcp_socket && tcp_socket.close
   end
 end
-
