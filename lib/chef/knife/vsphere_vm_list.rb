@@ -33,15 +33,23 @@ class Chef::Knife::VsphereVmList < Chef::Knife::BaseVsphereCommand
   def print_vms_in_folder(folder)
     vms = find_all_in_folder(folder, RbVmomi::VIM::VirtualMachine)
     vms.each do |vm|
-      state = case vm.runtime.powerState
-                when PsOn
-                  ui.color("on", :green)
-                when PsOff
-                  ui.color("off", :red)
-                when PsSuspended
-                  ui.color("suspended", :yellow)
-              end
-      puts "#{ui.color("VM Name:", :cyan)} #{vm.name}\t#{ui.color("IP:", :magenta)} #{vm.guest.ipAddress}\t#{ui.color("RAM:", :magenta)} #{vm.summary.config.memorySizeMB}\t#{ui.color("State:", :cyan)} #{state}"
+      vmname = case vm.runtime.powerState
+        when PsOn
+          ui.color(vm.name, :green)
+        when PsOff
+          ui.color(vm.name, :red)
+        when PsSuspended
+          ui.color(vm.name, :yellow)
+        end
+      print "#{ui.color("Name:", :cyan)} #{vmname}\t"
+      print "#{ui.color("vCPU:", :magenta)} #{vm.summary.config.numCpu}\t" 
+      print "#{ui.color("RAM:", :magenta)} #{vm.summary.config.memorySizeMB}\t"
+      print "#{ui.color("OS:", :magenta)} #{vm.config.guestFullName}\t"
+      print "#{ui.color("HOST:", :magenta)} #{vm.runtime.host.name.split('.').first}\t"
+      print "#{ui.color("DISKS:", :magenta)} #{vm.summary.config.numVirtualDisks}\t"
+      print "#{ui.color("IP:", :magenta)} #{vm.guest.ipAddress}\t"
+      print "#{ui.color("NICS:", :magenta)} #{vm.summary.config.numEthernetCards}\t"
+      print "\n"
     end
   end
 

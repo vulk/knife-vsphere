@@ -16,11 +16,17 @@ class Chef::Knife::VsphereVmDelete < Chef::Knife::BaseVsphereCommand
 
   banner "knife vsphere vm delete VMNAME"
 
+  option :force,
+    :short => "-F",
+    :long => "--force",
+    :boolean => true,
+    :description => "Force deletion of vm with out questioning."
+
   option :purge,
-         :short => "-P",
-         :long => "--purge",
-         :boolean => true,
-         :description => "Destroy corresponding node and client on the Chef Server, in addition to destroying the VM itself."
+    :short => "-P",
+    :long => "--purge",
+    :boolean => true,
+    :description => "Destroy corresponding node and client on the Chef Server, in addition to destroying the VM itself."
 
   get_common_options
 
@@ -33,6 +39,15 @@ class Chef::Knife::VsphereVmDelete < Chef::Knife::BaseVsphereCommand
     object = itemClass.load(name)
     object.destroy
     puts "Deleted #{type_name} #{name}"
+  end
+
+  def confirm_action(question)
+    result = ui.ask_question(question, :default => "Y" )
+    if result == "Y" || result == "y" then
+      return true
+    else
+      return false
+    end
   end
 
   def run
@@ -51,16 +66,22 @@ class Chef::Knife::VsphereVmDelete < Chef::Knife::BaseVsphereCommand
 
     vm = find_in_folder(baseFolder, RbVmomi::VIM::VirtualMachine, vmname) or
         fatal_exit("VM #{vmname} not found")
-
-    vm.PowerOffVM_Task.wait_for_completion unless vm.runtime.powerState == "poweredOff"
-    vm.Destroy_Task
-    puts "Deleted virtual machine #{vmname}"
-
-    if config[:purge]
-      destroy_item(Chef::Node, vmname, "node")
-      destroy_item(Chef::ApiClient, vmname, "client")
-    else
-      puts "Corresponding node and client for the #{vmname} server were not deleted and remain registered with the Chef Server"
+    puts "\n#{ui.color("VM Name:", :cyan)} #{vm.name}\n#{ui.color("IP:", :magenta)} #{vm.guest.ipAddress}\n#{ui.color("RAM:", :magenta)} #{vm.summary.config.memorySizeMB}\n\n"
+    if config[:force] or
+      result = confirm_action("Do you really want to destroy server: #{vmname}")
+      print "#{ui.color("Waiting for powering down #{vmname}", :magenta)}"
+      vm.PowerOffVM_Task.wait_for_completion unless vm.runtime.powerState == "poweredOff"
+      puts "\n"
+      print "#{ui.color("Waiting for deletion #{vmname}", :magenta)}"
+      vm.Destroy_Task
+      puts "Deleted virtual machine #{vmname}"
+      if config[:purge] or
+        clean_chef = confirm_action("Do you want to delete the chef node and client '#{vmname}")
+        destroy_item(Chef::Node, vmname, "node")
+        destroy_item(Chef::ApiClient, vmname, "client")
+      else
+        puts "Corresponding node and client for the #{vmname} server were not deleted and remain registered with the Chef Server"
+      end
     end
   end
 end

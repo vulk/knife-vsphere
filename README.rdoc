@@ -123,6 +123,9 @@ Enumerates the customization specifications registered in the target datacenter.
    --no-host-key-verify - Disable host key verification
    --json-attributes - A JSON string to be added to the first run of chef-client
    --disable-customization - Disable default customization
+   --winrm-user - Winrm username
+   --winrm-password - Winrm password
+   --winrm-port- Winrm port
 
 
 Clones an existing VM template into a new VM instance, optionally applying an existing customization specification.

@@ -30,7 +30,12 @@ class Chef::Knife::VsphereVlanList < Chef::Knife::BaseVsphereCommand
     vim = get_vim_connection
     dc = get_datacenter
     dc.network.each do |network|
-      puts "#{ui.color("VLAN", :cyan)}: #{network.name}"
+      if network.kind_of? RbVmomi::VIM::DistributedVirtualPortgroup
+        type = "DvSwitch"
+      else
+        type = "vSwitch"
+      end
+      puts "#{ui.color("VLAN", :cyan)}: #{network.name} \t#{ui.color("TYPE", :magenta)}: #{type}"
     end
   end
 end
