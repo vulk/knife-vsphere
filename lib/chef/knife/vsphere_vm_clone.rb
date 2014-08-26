@@ -510,8 +510,35 @@ class Chef::Knife::VsphereVmClone < Chef::Knife::BaseVsphereCommand
             :timeZone => cust_spec.identity.guiUnattended.timeZone
           )
           runonce = RbVmomi::VIM.CustomizationGuiRunOnce(
-            :commandList => ['cust_spec.identity.guiUnattended.commandList']
+            #:commandList => ['cust_spec.identity.guiUnattended.commandList']
+            # binding.pry
+            # TODO: add fun customiztion commands
+            #:commandList => cust_spec.identity.guiUnattended.commandList
+            #:commandList => ['cmd /C netsh interface ip set address "Local Area Connection" dhcp', 
+            :commandList => [
+                              'cmd.exe /c winrm quickconfig -q',
+                              'cmd.exe /c winrm quickconfig -transport:http',
+                              'cmd.exe /c winrm set winrm/config @{MaxTimeoutms="1800000"}',
+                              'cmd.exe /c winrm set winrm/config/winrs @{MaxMemoryPerShellMB="300"}',
+                              'cmd.exe /c winrm set winrm/config/service @{AllowUnencrypted="true"}',
+                              'cmd.exe /c winrm set winrm/config/service/auth @{Basic="true"}',
+                              'cmd.exe /c winrm set winrm/config/client/auth @{Basic="true"}',
+                              'cmd.exe /c winrm set winrm/config/listener?Address=*+Transport=HTTP @{Port="5985"}',
+                              'cmd.exe /c net stop winrm',
+                              'cmd.exe /c sc config winrm start= auto',
+                              'cmd.exe /c net accounts /maxpwage:unlimited',
+                              'echo %DATE% %TIME% > C:\vm-is-customized',
+                              'cmd.exe /c net start winrm',
+                              'cmd.exe /c netsh advfirewall firewall set rule group="remote administration" new enable=yes',
+                              'cmd.exe /c netsh firewall add portopening TCP 5985 "Port 5985 for WinRM"',
+                              'cmd.exe /c netsh firewall add portopening TCP 3389 "Port 3389 for RDP"',
+                              'cmd.exe /c net user administrator Password1',
+                              'cmd /C netsh interface ip set address name="Local Area Connection" source=dhcp', 
+                              'cmd /C netsh interface ip set address name="Local Area Connection 2" source=dhcp',
+                              'echo %DATE% %TIME% > C:\vm-is-ready'
+                            ]
           )
+
           ident = RbVmomi::VIM.CustomizationSysprep
           ident.guiRunOnce = runonce
           ident.guiUnattended = guiUnattended
