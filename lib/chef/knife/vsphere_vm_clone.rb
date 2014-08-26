@@ -323,6 +323,7 @@ class Chef::Knife::VsphereVmClone < Chef::Knife::BaseVsphereCommand
         @bootstrap_protocol = get_config(:bootstrap_protocol)
         if @bootstrap_protocol == 'ssh'
           sleep 2 until vm.guest.ipAddress
+          print "\n#{ui.color("VM guest ipaddress: #{vm.guest.ipAddress}", :magenta)}"
           print "\n#{ui.color("Waiting for sshd", :magenta)}"
           print(".") until tcp_test_ssh(config[:fqdn]) {
             sleep BOOTSTRAP_DELAY
@@ -331,6 +332,7 @@ class Chef::Knife::VsphereVmClone < Chef::Knife::BaseVsphereCommand
           bootstrap_for_node.run
         else # winrm
           sleep 2 until vm.guest.ipAddress
+          print "\n#{ui.color("VM guest ipaddress: #{vm.guest.ipAddress}", :magenta)}"
           print "\n#{ui.color("Waiting for winrm to be active", :magenta)}"
           print(".") until tcp_test_winrm(config[:fqdn]) {
             sleep WINRM_BOOTSTRAP_DELAY
@@ -368,6 +370,7 @@ class Chef::Knife::VsphereVmClone < Chef::Knife::BaseVsphereCommand
 
 	# Builds a CloneSpec
 	def generate_clone_spec (src_config)
+
     rspec = nil
     if get_config(:resource_pool)
       rspec = RbVmomi::VIM.VirtualMachineRelocateSpec(:pool => find_pool(get_config(:resource_pool)))
@@ -445,6 +448,7 @@ class Chef::Knife::VsphereVmClone < Chef::Knife::BaseVsphereCommand
 		end
 
 		if get_config(:customization_spec)
+      # TODO: DRY up find and this catch
 			csi = find_customization(get_config(:customization_spec)) or
           fatal_exit("failed to find customization specification named #{get_config(:customization_spec)}")
 
@@ -474,7 +478,15 @@ class Chef::Knife::VsphereVmClone < Chef::Knife::BaseVsphereCommand
       use_ident = !config[:customization_hostname].nil? || !get_config(:customization_domain).nil? || cust_spec.identity.nil?
 
       if use_ident
+        # NOTE: maybe we should not use distro
         if get_config(:distro) == "windows" or src_config.guestId.downcase.include?("windows")
+
+          # NOTE: code below seems to assume a customization option is required
+          # TODO: make it so customization can be created on the fly?
+          if cust_spec.identity.nil?
+            fatal_exit("Please provide Windows Guest Customization")
+          end
+
           identification = RbVmomi::VIM.CustomizationIdentification(
             :joinWorkgroup => cust_spec.identity.identification.joinWorkgroup
           )
@@ -514,12 +526,15 @@ class Chef::Knife::VsphereVmClone < Chef::Knife::BaseVsphereCommand
           # end
 
           cust_spec.identity = ident
-        else
+        else # LINUX
           # TODO - verify that we're deploying a linux spec, at least warn
           ident = RbVmomi::VIM.CustomizationLinuxPrep
 
           ident.hostName = RbVmomi::VIM.CustomizationFixedName
           #ident.hostName = RbVmomi::VIM.CustomizationFixedName(:name => hostname)
+
+          # TODO: set hostname based on Chef nodename for some cases
+          # TODO: check that hostname is valid (e.g. no spaces, etc)
           if config[:customization_hostname]
             ident.hostName.name = config[:customization_hostname]
           else
@@ -580,7 +595,12 @@ class Chef::Knife::VsphereVmClone < Chef::Knife::BaseVsphereCommand
 	# @return [RbVmomi::VIM::CustomizationSpecItem]
 	def find_customization(name)
 		csm = config[:vim].serviceContent.customizationSpecManager
-		csm.GetCustomizationSpec(:name => name)
+    begin
+     csm.GetCustomizationSpec(:name => name)
+    # NOTE: quickfix for RbVmomi issue
+    rescue RbVmomi::Fault
+      fatal_exit("customization spec #{name} not found.  Try 'template list' command")
+    end
 	end
 
 	# Generates a CustomizationAdapterMapping (currently only single IPv4 address) object

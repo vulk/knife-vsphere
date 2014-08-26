@@ -15,7 +15,7 @@ class Chef
       deps do
         require 'chef/knife/bootstrap'
         Chef::Knife::Bootstrap.load_deps
-        require 'fog'
+        require 'fog' # not used, this is based on rbvmomi
         require 'socket'
         require 'net/ssh/multi'
         require 'readline'
